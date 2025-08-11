@@ -6,9 +6,15 @@ const ticketSchema = new mongoose.Schema(
     description: { type: String },
     status: {
       type: String,
-      enum: ['OPEN', 'IN_PROGRESS', 'CLOSED'],
-      default: 'OPEN',
+      enum: ['Open', 'In Progress', 'Closed'],
+      default: 'Open',
     },
+    priority: {
+      type: String,
+      enum: ['Low', 'Medium', 'High', 'Critical'],
+      default: 'Medium',
+    },
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

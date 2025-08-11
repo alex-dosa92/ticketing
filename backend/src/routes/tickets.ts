@@ -71,8 +71,77 @@ router.post('/', async (req: AuthRequest, res) => {
  *               $ref: '#/components/schemas/Error'
  */
 router.get('/', async (req: AuthRequest, res) => {
-  const tickets = await Ticket.find({ createdBy: req.userId });
-  res.json(tickets);
+  try {
+    const { search, status, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    
+    let query: any = {};
+    
+    if (search) {
+      const searchRegex = new RegExp(search as string, 'i');
+      query.$or = [
+        { title: searchRegex },
+        { description: searchRegex },
+        { _id: searchRegex.source.match(/^[0-9a-fA-F]{24}$/) ? search : null }
+      ].filter(Boolean);
+    }
+    
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    
+    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    const sortOptions: any = {};
+    sortOptions[sortBy as string] = sortDirection;
+    
+    const tickets = await Ticket.find(query)
+      .populate('createdBy', 'name email')
+      .populate('assignedTo', 'name email')
+      .sort(sortOptions);
+    res.json(tickets);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching tickets', error });
+  }
+});
+
+/**
+ * @swagger
+ * /tickets/{id}:
+ *   get:
+ *     summary: Get a single ticket by ID
+ *     tags: [Tickets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ticket ID
+ *     responses:
+ *       200:
+ *         description: Ticket details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Ticket'
+ *       404:
+ *         description: Ticket not found
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/:id', async (req: AuthRequest, res) => {
+  try {
+    const ticket = await Ticket.findById(req.params.id)
+      .populate('createdBy', 'name email')
+      .populate('assignedTo', 'name email');
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    res.json(ticket);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching ticket', error });
+  }
 });
 
 /**
