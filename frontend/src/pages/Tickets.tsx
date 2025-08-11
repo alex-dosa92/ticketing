@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
-import { getTickets, createTicket, updateTicket, deleteTicket, type Ticket } from '../api/tickets';
+import { getTickets, createTicket, updateTicket, deleteTicket, type Ticket, type GetTicketsParams } from '../api/tickets';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { validateTicketForm } from '../utils/validation';
+import type { ValidationErrors } from '../utils/validation';
+import ErrorDisplay from '../components/ErrorDisplay';
 
 const styles = {
   container: {
@@ -177,6 +180,90 @@ const styles = {
     fontSize: '18px',
     padding: '40px',
   },
+  searchContainer: {
+    marginBottom: '20px',
+    display: 'flex',
+    gap: '16px',
+    alignItems: 'center',
+    flexWrap: 'wrap' as const,
+    backgroundColor: 'white',
+    padding: '16px',
+    borderRadius: '8px',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+  },
+  searchInput: {
+    padding: '8px 12px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    fontSize: '14px',
+    minWidth: '200px',
+    flex: '1',
+  },
+  filterSelect: {
+    padding: '8px 12px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    fontSize: '14px',
+  },
+  sortContainer: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+  },
+  sortButton: {
+    padding: '8px 12px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    fontSize: '14px',
+  },
+  sortButtonActive: {
+    backgroundColor: '#007bff',
+    color: 'white',
+    borderColor: '#007bff',
+  },
+  priorityBadge: {
+    padding: '2px 6px',
+    borderRadius: '4px',
+    fontSize: '10px',
+    fontWeight: 'bold',
+    textTransform: 'uppercase' as const,
+    marginLeft: '8px',
+  },
+  priorityLow: {
+    backgroundColor: '#d4edda',
+    color: '#155724',
+  },
+  priorityMedium: {
+    backgroundColor: '#fff3cd',
+    color: '#856404',
+  },
+  priorityHigh: {
+    backgroundColor: '#f8d7da',
+    color: '#721c24',
+  },
+  priorityCritical: {
+    backgroundColor: '#721c24',
+    color: 'white',
+  },
+  ticketMeta: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '12px',
+    color: '#666',
+    marginTop: '8px',
+  },
+  viewButton: {
+    padding: '6px 12px',
+    backgroundColor: '#007bff',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '14px',
+  },
 };
 
 export default function Tickets() {
@@ -185,20 +272,36 @@ export default function Tickets() {
   const [showModal, setShowModal] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
   const { logout } = useAuth();
-   const navigate = useNavigate();
+  const navigate = useNavigate();
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'title'>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    status: 'OPEN' as 'OPEN' | 'IN_PROGRESS' | 'CLOSED',
+    status: 'Open' as 'Open' | 'In Progress' | 'Closed',
+    priority: 'Medium' as 'Low' | 'Medium' | 'High' | 'Critical',
   });
+  
+  const [formErrors, setFormErrors] = useState<ValidationErrors>({});
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
   useEffect(() => {
     loadTickets();
-  }, []);
+  }, [searchQuery, statusFilter, sortBy, sortOrder]);
 
   const loadTickets = async () => {
     try {
-      const ticketsData = await getTickets();
+      const params: GetTicketsParams = {
+        search: searchQuery || undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        sortBy,
+        sortOrder,
+      };
+      const ticketsData = await getTickets(params);
       setTickets(ticketsData);
     } catch (error) {
       console.error('Failed to load tickets:', error);
@@ -215,8 +318,13 @@ export default function Tickets() {
 
   const handleAddTicket = () => {
     setEditingTicket(null);
-    setFormData({ title: '', description: '', status: 'OPEN' });
+    setFormData({ title: '', description: '', status: 'Open', priority: 'Medium' });
+    setFormErrors({});
     setShowModal(true);
+  };
+
+  const handleViewTicket = (ticket: Ticket) => {
+    navigate(`/tickets/${ticket._id}`);
   };
 
   const handleEditTicket = (ticket: Ticket) => {
@@ -225,7 +333,9 @@ export default function Tickets() {
       title: ticket.title,
       description: ticket.description || '',
       status: ticket.status,
+      priority: ticket.priority,
     });
+    setFormErrors({});
     setShowModal(true);
   };
 
@@ -244,6 +354,15 @@ export default function Tickets() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    setFormErrors({});
+    
+    const validationErrors = validateTicketForm(formData.title, formData.description);
+    if (Object.keys(validationErrors).length > 0) {
+      setFormErrors(validationErrors);
+      return;
+    }
+    
+    setIsSubmittingForm(true);
     try {
       if (editingTicket) {
         // Update existing ticket
@@ -258,24 +377,52 @@ export default function Tickets() {
       }
       
       setShowModal(false);
-      setFormData({ title: '', description: '', status: 'OPEN' });
-    } catch (error) {
+      setFormData({ title: '', description: '', status: 'Open', priority: 'Medium' });
+      setFormErrors({});
+    } catch (error: any) {
       console.error('Failed to save ticket:', error);
-      alert('Failed to save ticket');
+      const errorMessage = error.response?.data?.message || 'Failed to save ticket';
+      setFormErrors({ form: [errorMessage] });
+    } finally {
+      setIsSubmittingForm(false);
     }
   };
 
   const getStatusStyle = (status: string) => {
     switch (status) {
-      case 'OPEN':
+      case 'Open':
         return { ...styles.statusBadge, ...styles.statusOpen };
-      case 'IN_PROGRESS':
+      case 'In Progress':
         return { ...styles.statusBadge, ...styles.statusInProgress };
-      case 'CLOSED':
+      case 'Closed':
         return { ...styles.statusBadge, ...styles.statusClosed };
       default:
         return styles.statusBadge;
     }
+  };
+
+  const getPriorityStyle = (priority: string) => {
+    switch (priority) {
+      case 'Low':
+        return { ...styles.priorityBadge, ...styles.priorityLow };
+      case 'Medium':
+        return { ...styles.priorityBadge, ...styles.priorityMedium };
+      case 'High':
+        return { ...styles.priorityBadge, ...styles.priorityHigh };
+      case 'Critical':
+        return { ...styles.priorityBadge, ...styles.priorityCritical };
+      default:
+        return styles.priorityBadge;
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   if (loading) {
@@ -288,11 +435,61 @@ export default function Tickets() {
         <h1 style={styles.title}>My Tickets</h1>
         <div style={styles.headerActions}>
           <button style={styles.addButton} onClick={handleAddTicket}>
-          Add New Ticket
-        </button>
-        <button style={styles.logoutButton} onClick={handleLogout}>
+            Add New Ticket
+          </button>
+          <button style={styles.logoutButton} onClick={handleLogout}>
             Logout
-        </button>
+          </button>
+        </div>
+      </div>
+
+      <div style={styles.searchContainer}>
+        <input
+          style={styles.searchInput}
+          type="text"
+          placeholder="Search tickets by title or ID..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        
+        <select
+          style={styles.filterSelect}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="all">All Status</option>
+          <option value="Open">Open</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Closed">Closed</option>
+        </select>
+        
+        <div style={styles.sortContainer}>
+          <span style={{ fontSize: '14px', color: '#666' }}>Sort by:</span>
+          <button
+            style={{
+              ...styles.sortButton,
+              ...(sortBy === 'createdAt' ? styles.sortButtonActive : {}),
+            }}
+            onClick={() => setSortBy('createdAt')}
+          >
+            Date
+          </button>
+          <button
+            style={{
+              ...styles.sortButton,
+              ...(sortBy === 'title' ? styles.sortButtonActive : {}),
+            }}
+            onClick={() => setSortBy('title')}
+          >
+            Title
+          </button>
+          <button
+            style={styles.sortButton}
+            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            title={`Sort ${sortOrder === 'asc' ? 'descending' : 'ascending'}`}
+          >
+            {sortOrder === 'asc' ? '↑' : '↓'}
+          </button>
         </div>
       </div>
 
@@ -308,10 +505,28 @@ export default function Tickets() {
               <p style={styles.ticketDescription}>
                 {ticket.description || 'No description'}
               </p>
-              <div style={getStatusStyle(ticket.status)}>
-                {ticket.status}
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={getStatusStyle(ticket.status)}>
+                  {ticket.status}
+                </span>
+                <span style={getPriorityStyle(ticket.priority)}>
+                  {ticket.priority}
+                </span>
+              </div>
+              <div style={styles.ticketMeta}>
+                <span>#{ticket._id.slice(-6)}</span>
+                <span>
+                  Created by: {typeof ticket.createdBy === 'object' ? ticket.createdBy.name : 'Unknown'}
+                </span>
+                <span>{formatDate(ticket.createdAt)}</span>
               </div>
               <div style={styles.ticketActions}>
+                <button 
+                  style={styles.viewButton}
+                  onClick={() => handleViewTicket(ticket)}
+                >
+                  View Details
+                </button>
                 <button 
                   style={styles.editButton}
                   onClick={() => handleEditTicket(ticket)}
@@ -335,39 +550,78 @@ export default function Tickets() {
           <div style={styles.modalContent}>
             <h2>{editingTicket ? 'Edit Ticket' : 'Add New Ticket'}</h2>
             <form onSubmit={handleSubmit} style={styles.form}>
-              <input
-                style={styles.input}
-                type="text"
-                placeholder="Ticket title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-              />
-              <textarea
-                style={styles.textarea}
-                placeholder="Description (optional)"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
+              <ErrorDisplay errors={formErrors.form} />
+              
+              <div>
+                <input
+                  style={{
+                    ...styles.input,
+                    borderColor: formErrors.title ? '#dc3545' : '#ddd'
+                  }}
+                  type="text"
+                  placeholder="Ticket title *"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  disabled={isSubmittingForm}
+                />
+                <ErrorDisplay errors={formErrors.title} />
+              </div>
+              
+              <div>
+                <textarea
+                  style={{
+                    ...styles.textarea,
+                    borderColor: formErrors.description ? '#dc3545' : '#ddd'
+                  }}
+                  placeholder="Description (optional)"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  disabled={isSubmittingForm}
+                />
+                <ErrorDisplay errors={formErrors.description} />
+              </div>
               <select
                 style={styles.select}
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                disabled={isSubmittingForm}
               >
-                <option value="OPEN">Open</option>
-                <option value="IN_PROGRESS">In Progress</option>
-                <option value="CLOSED">Closed</option>
+                <option value="Open">Open</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Closed">Closed</option>
+              </select>
+              <select
+                style={styles.select}
+                value={formData.priority}
+                onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
+                disabled={isSubmittingForm}
+              >
+                <option value="Low">Low Priority</option>
+                <option value="Medium">Medium Priority</option>
+                <option value="High">High Priority</option>
+                <option value="Critical">Critical Priority</option>
               </select>
               <div style={styles.modalActions}>
                 <button
                   type="button"
                   style={styles.cancelButton}
                   onClick={() => setShowModal(false)}
+                  disabled={isSubmittingForm}
                 >
                   Cancel
                 </button>
-                <button type="submit" style={styles.saveButton}>
-                  {editingTicket ? 'Update' : 'Create'} Ticket
+                <button 
+                  type="submit" 
+                  style={{
+                    ...styles.saveButton,
+                    backgroundColor: isSubmittingForm ? '#ccc' : '#28a745'
+                  }}
+                  disabled={isSubmittingForm}
+                >
+                  {isSubmittingForm 
+                    ? 'Saving...' 
+                    : `${editingTicket ? 'Update' : 'Create'} Ticket`
+                  }
                 </button>
               </div>
             </form>

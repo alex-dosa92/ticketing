@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { register, login } from '../api/auth';
+import { register } from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { validateRegisterForm } from '../utils/validation';
+import type { ValidationErrors } from '../utils/validation';
+import ErrorDisplay from '../components/ErrorDisplay';
 
 const styles = {
   container: {
@@ -44,21 +47,39 @@ const styles = {
 };
 
 export default function Register() {
-  const [username, setUsername] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { login: doLogin } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Clear previous errors
+    setErrors({});
+    
+    // Validate form
+    const validationErrors = validateRegisterForm(name, email, password, confirmPassword);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+    
+    setIsSubmitting(true);
     try {
-      await register(username, password);
-      const token = await login(username, password);
-      doLogin(token);
+      const authData = await register(name, email, password);
+      doLogin(authData.token, authData.user);
       navigate('/tickets');
-    } catch (err) {
-        console.error('Login failed', err);
-      alert('Login failed');
+    } catch (err: any) {
+      console.error('Registration failed', err);
+      const errorMessage = err.response?.data?.message || 'Registration failed';
+      setErrors({ form: [errorMessage] });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -66,9 +87,78 @@ export default function Register() {
     <div style={styles.container}>
       <form onSubmit={handleSubmit} style={styles.form}>
         <h2 style={styles.title}>Register</h2>
-        <input style={styles.input} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username" />
-        <input style={styles.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password" />
-        <button style={styles.button} type="submit">Register</button>
+        
+        <ErrorDisplay errors={errors.form} />
+        
+        <div>
+          <input 
+            style={{
+              ...styles.input,
+              borderColor: errors.name ? '#dc3545' : '#ddd'
+            }}
+            value={name} 
+            onChange={(e) => setName(e.target.value)} 
+            placeholder="Full Name"
+            disabled={isSubmitting}
+          />
+          <ErrorDisplay errors={errors.name} />
+        </div>
+        
+        <div>
+          <input 
+            style={{
+              ...styles.input,
+              borderColor: errors.email ? '#dc3545' : '#ddd'
+            }}
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
+            placeholder="Email" 
+            type="email"
+            disabled={isSubmitting}
+          />
+          <ErrorDisplay errors={errors.email} />
+        </div>
+        
+        <div>
+          <input 
+            style={{
+              ...styles.input,
+              borderColor: errors.password ? '#dc3545' : '#ddd'
+            }}
+            type="password" 
+            value={password} 
+            onChange={(e) => setPassword(e.target.value)} 
+            placeholder="Password"
+            disabled={isSubmitting}
+          />
+          <ErrorDisplay errors={errors.password} />
+        </div>
+        
+        <div>
+          <input 
+            style={{
+              ...styles.input,
+              borderColor: errors.confirmPassword ? '#dc3545' : '#ddd'
+            }}
+            type="password" 
+            value={confirmPassword} 
+            onChange={(e) => setConfirmPassword(e.target.value)} 
+            placeholder="Confirm Password"
+            disabled={isSubmitting}
+          />
+          <ErrorDisplay errors={errors.confirmPassword} />
+        </div>
+        
+        <button 
+          style={{
+            ...styles.button,
+            backgroundColor: isSubmitting ? '#ccc' : '#007bff'
+          }} 
+          type="submit" 
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? 'Creating Account...' : 'Register'}
+        </button>
       </form>
     </div>
   );
