@@ -1,9 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-
-interface AuthRequest extends Request {
-  userId?: string;
-}
+import { AuthRequest } from '../types/auth';
 
 export const authenticate = (
   req: AuthRequest,
@@ -15,8 +12,8 @@ export const authenticate = (
 
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
-    req.userId = (decoded as any).id;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    req.userId = decoded.userId;
     next();
   } catch {
     res.sendStatus(403);

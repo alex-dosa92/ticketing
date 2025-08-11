@@ -1,10 +1,7 @@
 import express, { Response, NextFunction } from 'express';
 import { Ticket } from '../models/Ticket';
 import { authenticate } from '../middleware/auth';
-
-interface AuthRequest extends express.Request {
-  userId?: string;
-}
+import { AuthRequest } from '../types/auth';
 
 const router = express.Router();
 
