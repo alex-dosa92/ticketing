@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { login } from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { validateLoginForm } from '../utils/validation';
+import type { ValidationErrors } from '../utils/validation';
+import ErrorDisplay from '../components/ErrorDisplay';
 
 const styles = {
   container: {
@@ -58,20 +61,37 @@ const styles = {
 };
 
 export default function Login() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { login: doLogin } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Clear previous errors
+    setErrors({});
+    
+    // Validate form
+    const validationErrors = validateLoginForm(email, password);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+    
+    setIsSubmitting(true);
     try {
-      const token = await login(username, password);
-      doLogin(token);
+      const authData = await login(email, password);
+      doLogin(authData.token, authData.user);
       navigate('/tickets');
-    } catch (err) {
-        console.error('Login failed', err);
-      alert('Login failed');
+    } catch (err: any) {
+      console.error('Login failed', err);
+      const errorMessage = err.response?.data?.message || 'Login failed';
+      setErrors({ form: [errorMessage] });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -83,9 +103,49 @@ export default function Login() {
     <div style={styles.container}>
       <form onSubmit={handleSubmit} style={styles.form}>
         <h2 style={styles.title}>Login</h2>
-        <input style={styles.input} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username" />
-        <input style={styles.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password" />
-        <button style={styles.button} type="submit">Login</button>
+        
+        <ErrorDisplay errors={errors.form} />
+        
+        <div>
+          <input 
+            style={{
+              ...styles.input,
+              borderColor: errors.email ? '#dc3545' : '#ddd'
+            }}
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
+            placeholder="Email" 
+            type="email"
+            disabled={isSubmitting}
+          />
+          <ErrorDisplay errors={errors.email} />
+        </div>
+        
+        <div>
+          <input 
+            style={{
+              ...styles.input,
+              borderColor: errors.password ? '#dc3545' : '#ddd'
+            }}
+            type="password" 
+            value={password} 
+            onChange={(e) => setPassword(e.target.value)} 
+            placeholder="Password"
+            disabled={isSubmitting}
+          />
+          <ErrorDisplay errors={errors.password} />
+        </div>
+        
+        <button 
+          style={{
+            ...styles.button,
+            backgroundColor: isSubmitting ? '#ccc' : '#007bff'
+          }} 
+          type="submit" 
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? 'Logging in...' : 'Login'}
+        </button>
 
         <div style={styles.divider}>or</div>
         
@@ -93,6 +153,7 @@ export default function Login() {
           type="button" 
           style={styles.registerButton}
           onClick={handleRegisterClick}
+          disabled={isSubmitting}
         >
           Create Account
         </button>
